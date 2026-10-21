@@ -12,57 +12,51 @@ import {
   User, 
   RefreshCw, 
   Calendar, 
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react';
 
 interface Rotina {
   id: string;
+  nome_prestador: string;
   titulo: string;
   prazo_dias: number;
   ultimo_checkin: string;
   status: string;
-  prestador?: {
-    nome: string;
-    telefone: string;
-    email: string;
-  };
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
   const [rotinas, setRotinas] = useState<Rotina[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [cronRunning, setCronRunning] = useState(false);
   const [cronResult, setCronResult] = useState<any>(null);
 
-  // Modal para criar nova rotina
+  // Modal para criar nova rotina/membro
   const [showModal, setShowModal] = useState(false);
+  const [novoNome, setNovoNome] = useState('');
   const [novoTitulo, setNovoTitulo] = useState('');
   const [novoPrazo, setNovoPrazo] = useState(3);
 
   useEffect(() => {
-    carregarUsuario();
+    verificarSessao();
   }, []);
 
-  const carregarUsuario = async () => {
+  const verificarSessao = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       router.push('/login');
       return;
     }
-    setUser(session.user);
-    carregarRotinas(session.user.id);
+    carregarRotinas();
   };
 
-  const carregarRotinas = async (userId: string) => {
+  const carregarRotinas = async () => {
     setLoading(true);
-    // Busca as rotinas do usuário logado
     const { data, error } = await supabase
       .from('rotinas')
       .select('*')
-      .eq('prestador_id', userId)
       .order('criado_em', { ascending: false });
 
     if (!error && data) {
@@ -81,7 +75,7 @@ export default function DashboardPage() {
       });
 
       if (res.ok) {
-        if (user) carregarRotinas(user.id);
+        carregarRotinas();
       } else {
         alert('Erro ao registrar procedimento.');
       }
@@ -94,10 +88,10 @@ export default function DashboardPage() {
 
   const criarRotina = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novoTitulo.trim() || !user) return;
+    if (!novoNome.trim() || !novoTitulo.trim()) return;
 
     const { error } = await supabase.from('rotinas').insert({
-      prestador_id: user.id,
+      nome_prestador: novoNome,
       titulo: novoTitulo,
       prazo_dias: novoPrazo,
       ultimo_checkin: new Date().toISOString(),
@@ -106,11 +100,18 @@ export default function DashboardPage() {
 
     if (!error) {
       setShowModal(false);
+      setNovoNome('');
       setNovoTitulo('');
-      carregarRotinas(user.id);
+      carregarRotinas();
     } else {
       alert(error.message);
     }
+  };
+
+  const removerRotina = async (id: string) => {
+    if (!confirm('Deseja realmente remover este monitoramento?')) return;
+    const { error } = await supabase.from('rotinas').delete().eq('id', id);
+    if (!error) carregarRotinas();
   };
 
   const testarCronDisparo = async () => {
@@ -132,7 +133,6 @@ export default function DashboardPage() {
     router.push('/login');
   };
 
-  // Calcula dias desde o último check-in
   const getStatusRotina = (ultimoCheckinStr: string, prazoDias: number) => {
     const agora = new Date();
     const ultimo = new Date(ultimoCheckinStr);
@@ -156,8 +156,8 @@ export default function DashboardPage() {
             M
           </div>
           <div>
-            <h1 className="font-semibold text-sm leading-tight text-white">Painel de Monitoramento</h1>
-            <p className="text-xs text-slate-400">{user?.email}</p>
+            <h1 className="font-semibold text-sm leading-tight text-white">Monitor de Procedimentos da Equipe</h1>
+            <p className="text-xs text-slate-400">Notificações diretas no WhatsApp: 5588981848592</p>
           </div>
         </div>
 
@@ -165,11 +165,11 @@ export default function DashboardPage() {
           <button
             onClick={testarCronDisparo}
             disabled={cronRunning}
-            className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold transition disabled:opacity-50"
-            title="Simula a execução do cron da Vercel agora mesmo"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold transition disabled:opacity-50"
+            title="Dispara teste de alerta no WhatsApp imediatamente"
           >
             <Send className="w-3.5 h-3.5" />
-            {cronRunning ? 'Verificando...' : 'Testar Alerta WhatsApp'}
+            {cronRunning ? 'Enviando...' : 'Testar Alerta no WhatsApp'}
           </button>
 
           <button
@@ -187,7 +187,7 @@ export default function DashboardPage() {
         {/* Banner do teste de cron */}
         {cronResult && (
           <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-300">
-            <span className="font-bold text-amber-400">Resultado do Teste do Cron:</span>
+            <span className="font-bold text-amber-400">Status do Envio WhatsApp:</span>
             <pre className="mt-2 p-3 bg-slate-950 rounded-lg overflow-x-auto text-[11px] text-emerald-400">
               {JSON.stringify(cronResult, null, 2)}
             </pre>
@@ -197,9 +197,9 @@ export default function DashboardPage() {
         {/* Cabeçalho da seção */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h2 className="text-xl font-bold text-white">Suas Rotinas e Procedimentos</h2>
+            <h2 className="text-xl font-bold text-white">Membros & Tarefas Monitoradas</h2>
             <p className="text-slate-400 text-sm">
-              Confirme seus procedimentos periódicos para manter seu status em dia.
+              Cada membro clica no seu botão para registrar que o procedimento foi realizado.
             </p>
           </div>
           <button
@@ -207,25 +207,25 @@ export default function DashboardPage() {
             className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold text-xs transition"
           >
             <Plus className="w-4 h-4" />
-            Nova Rotina / Tarefa
+            Adicionar Membro / Procedimento
           </button>
         </div>
 
         {/* Lista de Rotinas */}
         {loading ? (
-          <div className="text-center py-20 text-slate-500 text-sm">Carregando rotinas...</div>
+          <div className="text-center py-20 text-slate-500 text-sm">Carregando membros e procedimentos...</div>
         ) : rotinas.length === 0 ? (
           <div className="p-12 text-center rounded-2xl bg-slate-900/50 border border-slate-800">
             <Clock className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-            <h3 className="font-semibold text-white mb-1">Nenhum procedimento cadastrado</h3>
+            <h3 className="font-semibold text-white mb-1">Nenhum membro ou tarefa cadastrada</h3>
             <p className="text-sm text-slate-400 mb-6">
-              Clique no botão abaixo para adicionar a primeira tarefa periódica.
+              Clique no botão abaixo para adicionar o primeiro prestador e sua função.
             </p>
             <button
               onClick={() => setShowModal(true)}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium transition"
+              className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs transition"
             >
-              Criar Rotina de Teste
+              Adicionar Primeiro Membro
             </button>
           </div>
         ) : (
@@ -243,37 +243,47 @@ export default function DashboardPage() {
               return (
                 <div
                   key={rotina.id}
-                  className={`p-6 rounded-2xl border transition ${
+                  className={`p-6 rounded-2xl border transition relative ${
                     status.atrasado
                       ? 'bg-red-950/20 border-red-500/30'
                       : 'bg-slate-900/60 border-slate-800'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3 mb-4">
+                  <button
+                    onClick={() => removerRotina(rotina.id)}
+                    className="absolute top-4 right-4 text-slate-600 hover:text-red-400 transition"
+                    title="Remover"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex items-start justify-between gap-3 mb-4 pr-6">
                     <div>
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold uppercase tracking-wider mb-1">
+                        <User className="w-3.5 h-3.5" />
+                        {rotina.nome_prestador || 'Membro da Equipe'}
+                      </div>
                       <h3 className="font-bold text-white text-base">{rotina.titulo}</h3>
                       <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
                         <Calendar className="w-3.5 h-3.5" />
-                        Último check-in: {dataFormatada}
+                        Último registro: {dataFormatada}
                       </div>
                     </div>
+                  </div>
 
+                  <div className="mb-4">
                     {status.atrasado ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold">
-                        <AlertTriangle className="w-3 h-3" />
-                        Atrasado ({status.diffDias} dias)
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Atrasado ({status.diffDias} dias sem fazer) - Alerta Ativo
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Em dia ({status.restanteDias}d restantes)
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Em dia ({status.restanteDias}d restantes para o prazo de {rotina.prazo_dias}d)
                       </span>
                     )}
                   </div>
-
-                  <p className="text-xs text-slate-400 mb-6">
-                    Prazo de tolerância de <strong className="text-slate-300">{rotina.prazo_dias} dias</strong> antes do alerta ser disparado no WhatsApp.
-                  </p>
 
                   <button
                     onClick={() => fazerCheckin(rotina.id)}
@@ -282,8 +292,8 @@ export default function DashboardPage() {
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     {actionLoading === rotina.id
-                      ? 'Gravando...'
-                      : 'Confirmar Procedimento Feito Hoje'}
+                      ? 'Registrando...'
+                      : `Confirmar Procedimento Feito Hoje (${rotina.nome_prestador})`}
                   </button>
                 </div>
               );
@@ -292,22 +302,34 @@ export default function DashboardPage() {
         )}
       </main>
 
-      {/* Modal para criar rotina */}
+      {/* Modal para criar membro / rotina */}
       {showModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-white mb-2">Adicionar Procedimento</h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h3 className="text-lg font-bold text-white mb-1">Adicionar Prestador / Procedimento</h3>
             <p className="text-xs text-slate-400 mb-4">
-              Defina o nome da tarefa e o número de dias limite de inatividade.
+              Cadastre o membro e a função que ele deve cumprir periodicamente.
             </p>
 
             <form onSubmit={criarRotina} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Título do Procedimento</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Nome do Prestador / Funcionário</label>
                 <input
                   type="text"
                   required
-                  placeholder="Ex: Atualização de Planilha / Relatório"
+                  placeholder="Ex: Carlos Oliveira"
+                  value={novoNome}
+                  onChange={(e) => setNovoNome(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Título do Procedimento / Função</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Verificação do Servidor / Relatório de Vendas"
                   value={novoTitulo}
                   onChange={(e) => setNovoTitulo(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500"
@@ -316,7 +338,7 @@ export default function DashboardPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Prazo de Alerta (Dias)
+                  Prazo Limite de Inatividade (Dias)
                 </label>
                 <input
                   type="number"
@@ -326,6 +348,9 @@ export default function DashboardPage() {
                   onChange={(e) => setNovoPrazo(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white text-xs focus:outline-none focus:border-emerald-500"
                 />
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Se passar desse prazo sem check-in, o alerta vai para o seu WhatsApp.
+                </span>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -340,7 +365,7 @@ export default function DashboardPage() {
                   type="submit"
                   className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold rounded-xl text-xs"
                 >
-                  Salvar
+                  Salvar Membro
                 </button>
               </div>
             </form>
